@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "m3u8gen": {
-      "commandName": "Project",
-      "commandLineArgs": "-d G:\\Music"
-    }
-  }
-}
