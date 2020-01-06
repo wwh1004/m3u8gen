@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Cli;
 using System.Collections.Generic;
 using System.IO;
@@ -28,27 +28,69 @@ namespace m3u8gen {
 			Settings settings;
 
 			settings = CommandLine.Parse<Settings>(args);
-			WritePlaylsit(settings.Directory, "*あやぽんず*", "あやぽんず＊.local", false);
-			WritePlaylsit(settings.Directory, "*あやぽんず*", "あやぽんず＊", true);
-			WritePlaylsit(settings.Directory, "*松下*", "松下.local", false);
-			WritePlaylsit(settings.Directory, "*松下*", "松下", true);
-			WritePlaylsit(settings.Directory, "*HIMEHINA*", "HIMEHINA.local", false);
-			WritePlaylsit(settings.Directory, "*HIMEHINA*", "HIMEHINA", true);
-			WritePlaylsit(settings.Directory, new string[] { "*あやぽんず*", "*松下*", "*HIMEHINA*" }, "Mixed1.local", false);
-			WritePlaylsit(settings.Directory, new string[] { "*あやぽんず*", "*松下*", "*HIMEHINA*" }, "Mixed1", true);
+			WritePlaylsit(settings.Directory, "あやぽんず＊.local", false, s => s.Contains("あやぽんず"));
+			WritePlaylsit(settings.Directory, "あやぽんず＊", true, s => s.Contains("あやぽんず"));
+			WritePlaylsit(settings.Directory, "松下.local", false, s => s.Contains("松下"));
+			WritePlaylsit(settings.Directory, "松下", true, s => s.Contains("松下"));
+			WritePlaylsit(settings.Directory, "HIMEHINA.local", false, s => s.Contains("HIMEHINA"));
+			WritePlaylsit(settings.Directory, "HIMEHINA", true, s => s.Contains("HIMEHINA"));
+			WritePlaylsit(settings.Directory, "Mixed1.local", false, s => s.Contains("あやぽんず") || s.Contains("松下") || s.Contains("HIMEHINA"));
+			WritePlaylsit(settings.Directory, "Mixed1", true, s => s.Contains("あやぽんず") || s.Contains("松下") || s.Contains("HIMEHINA"));
+			WritePlaylsit(settings.Directory, "中文.local", false, IsChineseTrack);
+			WritePlaylsit(settings.Directory, "中文", true, IsChineseTrack);
+			WritePlaylsit(settings.Directory, "English.local", false, IsEnglishTrack);
+			WritePlaylsit(settings.Directory, "English", true, IsEnglishTrack);
+
+			bool IsChineseTrack(string _filePath) {
+				string _part;
+				bool _hasChineseChar;
+
+				_part = _filePath.Substring(settings.Directory.Length + 1);
+				if (_part.IndexOf('\\') != -1)
+					return false;
+				_hasChineseChar = false;
+				foreach (char c in _part) {
+					if (IsLatinChar(c))
+						continue;
+					if (IsChineseChar(c)) {
+						_hasChineseChar = true;
+						continue;
+					}
+					return false;
+				}
+				return _hasChineseChar;
+			}
+
+			bool IsEnglishTrack(string _filePath) {
+				string _part;
+
+				_part = _filePath.Substring(settings.Directory.Length + 1);
+				if (_part.IndexOf('\\') != -1)
+					return false;
+				foreach (char c in _part)
+					if (!IsLatinChar(c))
+						return false;
+				return true;
+			}
+
+			bool IsLatinChar(char c) {
+				return c >= 0x0000 && c <= 0x00FF;
+			}
+
+			bool IsChineseChar(char c) {
+				// https://www.qqxiuzi.cn/zh/hanzi-unicode-bianma.php
+				if (c >= 0x4E00 && c <= 0x9FA5)
+					return true;
+				if (c >= 0x9FA6 && c <= 0x9FEF)
+					return true;
+				return false;
+			}
 		}
 
-		private static void WritePlaylsit(string directory, string keyword, string playlistName, bool changeLetter) {
+		private static void WritePlaylsit(string directory, string playlistName, bool changeLetter, Func<string, bool> selector) {
 			string playlist;
 
-			playlist = string.Join(Environment.NewLine, EnumerateAudioFiles(directory, keyword).Select(s => changeLetter ? ChangeLetter(s) : s));
-			File.WriteAllText(playlistName + ".m3u8", playlist);
-		}
-
-		private static void WritePlaylsit(string directory, string[] keywords, string playlistName, bool changeLetter) {
-			string playlist;
-
-			playlist = string.Join(Environment.NewLine, keywords.SelectMany(s => EnumerateAudioFiles(directory, s)).Select(s => changeLetter ? ChangeLetter(s) : s));
+			playlist = string.Join(Environment.NewLine, EnumerateAudioFiles(directory, selector).Select(s => changeLetter ? ChangeLetter(s) : s));
 			File.WriteAllText(playlistName + ".m3u8", playlist);
 		}
 
@@ -60,11 +102,9 @@ namespace m3u8gen {
 			return sb.ToString();
 		}
 
-		private static IEnumerable<string> EnumerateAudioFiles(string directory, string keyword) {
-			foreach (string filePath in Directory.EnumerateFiles(directory, keyword, SearchOption.TopDirectoryOnly).Where(IsAudioFile))
-				yield return filePath;
-			foreach (string directoryPath in Directory.EnumerateDirectories(directory, keyword, SearchOption.TopDirectoryOnly))
-				foreach (string filePath in Directory.EnumerateFiles(directoryPath, "*", SearchOption.AllDirectories).Where(IsAudioFile))
+		private static IEnumerable<string> EnumerateAudioFiles(string directory, Func<string, bool> selector) {
+			foreach (string filePath in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+				if (IsAudioFile(filePath) && selector(filePath))
 					yield return filePath;
 		}
 
@@ -72,7 +112,10 @@ namespace m3u8gen {
 			string extension;
 
 			extension = Path.GetExtension(filePath);
-			return _audioExtensions.Any(s => extension.Equals(s, StringComparison.OrdinalIgnoreCase));
+			foreach (string audioExtension in _audioExtensions)
+				if (string.Equals(extension, audioExtension, StringComparison.OrdinalIgnoreCase))
+					return true;
+			return false;
 		}
 	}
 }
